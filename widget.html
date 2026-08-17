@@ -1,0 +1,276 @@
+<!--
+  BUDDEL WETTER — Gartenwetter Widget für Notion
+  ================================================
+  Einbau: Notion HTML-Block -> diesen kompletten Code einfügen.
+
+  Datenquelle: eigene Vercel-Funktion /api/get-weather
+  (liest Open-Meteo für Rohrdorf aus). Passe FUNCTION_URL unten an deine
+  Vercel-Domain an, sobald das Projekt deployt ist.
+
+  WICHTIG — PP Pangaia Schrift:
+  Aus diesem Chat heraus habe ich keinen Zugriff auf deine Base64-Font-Dateien
+  aus den anderen Widgets. Bitte den bestehenden @font-face Block
+  (PP Pangaia Medium Italic + Bold Italic) aus einem deiner anderen Widgets
+  hier an der markierten Stelle einfügen — dann sieht die Schrift exakt
+  gleich aus wie bei "Wetter Frosch" & Co.
+-->
+<div id="buddel-wetter-root">
+  <style>
+    #buddel-wetter-root {
+      /* ---- Design-Tokens, passend zu deinem bestehenden System ---- */
+      --bg: rgb(25, 25, 25);
+      --accent: rgb(107, 157, 79); /* eigenes Gartengrün nur für dieses Widget */
+      --text-main: rgba(255, 255, 255, 0.92);
+      --text-muted: rgba(255, 255, 255, 0.55);
+      --font-body: "PP Pangaia", Georgia, serif;
+
+      background: var(--bg);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      font-style: italic;
+      padding: 20px 4px;
+      text-align: left;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* -----------------------------------------------------------
+       Schrift: hier deinen bestehenden @font-face Block einfügen
+       (PP Pangaia Medium Italic + Bold Italic, Base64 aus .otf)
+       ----------------------------------------------------------- */
+    /*
+    @font-face {
+      font-family: "PP Pangaia";
+      src: url(data:font/otf;base64,...) format("opentype");
+      font-weight: 500;
+      font-style: italic;
+    }
+    @font-face {
+      font-family: "PP Pangaia";
+      src: url(data:font/otf;base64,...) format("opentype");
+      font-weight: 700;
+      font-style: italic;
+    }
+    */
+
+    #buddel-wetter-root * {
+      box-sizing: border-box;
+    }
+
+    #buddel-wetter-root .bw-heading {
+      font-size: 30px;
+      font-weight: 700;
+      margin: 0 0 6px 0;
+      display: inline-block;
+      padding-bottom: 6px;
+      border-bottom: 2px solid var(--accent);
+    }
+
+    #buddel-wetter-root .bw-sub {
+      font-size: 16px;
+      color: var(--text-muted);
+      margin: 0 0 20px 0;
+    }
+
+    #buddel-wetter-root .bw-top {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 22px;
+      flex-wrap: wrap;
+    }
+
+    #buddel-wetter-root .bw-icon {
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+    }
+
+    #buddel-wetter-root .bw-temp-now {
+      font-size: 44px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    #buddel-wetter-root .bw-condition {
+      font-size: 16px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    #buddel-wetter-root .bw-minmax {
+      font-size: 16px;
+      display: flex;
+      gap: 14px;
+      margin-top: 2px;
+    }
+
+    #buddel-wetter-root .bw-minmax span.bw-max { color: var(--accent); }
+    #buddel-wetter-root .bw-minmax span.bw-min { color: var(--text-muted); }
+
+    #buddel-wetter-root .bw-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 14px;
+    }
+
+    #buddel-wetter-root .bw-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #buddel-wetter-root .bw-card svg {
+      width: 26px;
+      height: 26px;
+      flex-shrink: 0;
+      color: var(--accent);
+    }
+
+    #buddel-wetter-root .bw-card-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    #buddel-wetter-root .bw-card-value {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    #buddel-wetter-root .bw-frost-warning {
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    #buddel-wetter-root .bw-frost-warning .bw-card-value {
+      color: #e8b04b;
+    }
+
+    #buddel-wetter-root .bw-frost-ok .bw-card-value {
+      color: var(--text-main);
+    }
+
+    #buddel-wetter-root .bw-updated {
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    #buddel-wetter-root .bw-error {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+  </style>
+
+  <h2 class="bw-heading">Wetter Frosch</h2>
+  <p class="bw-sub">Gartenwetter für Rohrdorf</p>
+
+  <div id="bw-content">
+    <p class="bw-error">Lade Wetterdaten …</p>
+  </div>
+
+  <script>
+    (function () {
+      // Passe diese URL an, sobald das Projekt auf Vercel deployt ist,
+      // z.B. "https://gartenwetter-rohrdorf.vercel.app/api/get-weather"
+      const FUNCTION_URL = "/api/get-weather";
+
+      const ICONS = {
+        sun: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8l1.8-1.8M18 6l1.8-1.8"/></svg>`,
+        "sun-cloud": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="8" r="3.2"/><path d="M8 1.8v1.6M8 12.6v.4M2.3 8h1.6M14 8"/><path d="M8.5 15.5h9a3.5 3.5 0 0 0 .3-7 4.6 4.6 0 0 0-8.8-1.3A3.8 3.8 0 0 0 6 15.4"/></svg>`,
+        cloud: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 18.5h11a4 4 0 0 0 .4-8 5.2 5.2 0 0 0-10-1.6A4.3 4.3 0 0 0 6.5 18.5Z"/></svg>`,
+        fog: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9h9a4 4 0 1 0-3.6-5.7"/><path d="M3 14h18M3 18h18"/></svg>`,
+        "rain-light": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 13.5h11a4 4 0 0 0 .4-8 5.2 5.2 0 0 0-10-1.6A4.3 4.3 0 0 0 6.5 13.5Z"/><path d="M9 17.5l-1 2.2M14 17.5l-1 2.2"/></svg>`,
+        rain: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 12.5h11a4 4 0 0 0 .4-8 5.2 5.2 0 0 0-10-1.6A4.3 4.3 0 0 0 6.5 12.5Z"/><path d="M8 16.5l-1.2 3M12.5 16.5l-1.2 3M17 16.5l-1.2 3"/></svg>`,
+        snow: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 12.5h11a4 4 0 0 0 .4-8 5.2 5.2 0 0 0-10-1.6A4.3 4.3 0 0 0 6.5 12.5Z"/><path d="M9 16.5v5M6.7 18l4.6 2.5M15 16.5v5M12.7 18l4.6 2.5"/></svg>`,
+        thunder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 12.5h11a4 4 0 0 0 .4-8 5.2 5.2 0 0 0-10-1.6A4.3 4.3 0 0 0 6.5 12.5Z"/><path d="M12.5 14.5l-3 5h3l-1.5 4 4.5-6h-3l1.5-3z"/></svg>`,
+        umbrella: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9Z"/><path d="M12 11v8a2 2 0 0 1-3.5 1.3"/></svg>`,
+        sonnenstunden: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="14" r="4"/><path d="M12 2v2.5M4.9 8.4l1.8 1.4M19.1 8.4l-1.8 1.4M2 14h2.5M19.5 14H22"/></svg>`,
+        giesskanne: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17h9a3 3 0 0 0 3-3V9h3.5a1.8 1.8 0 0 0 0-3.5H16"/><path d="M12 9H6a2 2 0 0 0-2 2v6"/><path d="M18 5.5l3-1.8M18 7.2l3.4.3M18 3.8l2.4-2"/><path d="M6 20l.6-2M10 20l.6-2"/></svg>`,
+        frost: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M4.5 6.5l15 11M19.5 6.5l-15 11M6 3l1.2 3M18 3l-1.2 3M6 21l1.2-3M18 21l-1.2-3M2.5 9.5L5 12l-2.5 2.5M21.5 9.5L19 12l2.5 2.5"/></svg>`,
+      };
+
+      function el(html) {
+        const t = document.createElement("template");
+        t.innerHTML = html.trim();
+        return t.content.firstChild;
+      }
+
+      function render(data) {
+        const root = document.getElementById("bw-content");
+
+        const frostClass =
+          data.bodenfrostStatus === "nein" ? "bw-frost-ok" : "bw-frost-warning";
+
+        root.innerHTML = `
+          <div class="bw-top">
+            <div class="bw-icon">${ICONS[data.icon] || ICONS.cloud}</div>
+            <div>
+              <div class="bw-temp-now">${data.temperaturAktuell}°</div>
+              <div class="bw-condition">${data.wetterLabel}</div>
+              <div class="bw-minmax">
+                <span class="bw-max">Hoch ${data.temperaturMax}°</span>
+                <span class="bw-min">Tief ${data.temperaturMin}°</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bw-grid">
+            <div class="bw-card">
+              ${ICONS.umbrella}
+              <div>
+                <div class="bw-card-label">Niederschlag</div>
+                <div class="bw-card-value">${data.niederschlagProzent} %</div>
+              </div>
+            </div>
+
+            <div class="bw-card">
+              ${ICONS.sonnenstunden}
+              <div>
+                <div class="bw-card-label">Sonnenstunden</div>
+                <div class="bw-card-value">${data.sonnenstunden} h</div>
+              </div>
+            </div>
+
+            <div class="bw-card">
+              ${ICONS.giesskanne}
+              <div>
+                <div class="bw-card-label">Gießindex</div>
+                <div class="bw-card-value">${data.giessindex}</div>
+              </div>
+            </div>
+
+            <div class="bw-card ${frostClass}">
+              ${ICONS.frost}
+              <div>
+                <div class="bw-card-label">Bodenfrost</div>
+                <div class="bw-card-value">${data.bodenfrostLabel}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bw-updated">Stand: ${new Date(
+            data.aktualisiert
+          ).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr</div>
+        `;
+      }
+
+      function renderError() {
+        document.getElementById("bw-content").innerHTML =
+          '<p class="bw-error">Wetterdaten aktuell nicht verfügbar.</p>';
+      }
+
+      fetch(FUNCTION_URL)
+        .then((res) => {
+          if (!res.ok) throw new Error("Netzwerkfehler");
+          return res.json();
+        })
+        .then(render)
+        .catch(renderError);
+    })();
+  </script>
+</div>

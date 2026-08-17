@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/get-weather.js": {
+      "runtime": "nodejs20.x"
+    }
+  }
+}
